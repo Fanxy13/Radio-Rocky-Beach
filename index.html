@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radio Rocky Beach</title>
+  <link rel="icon" id="favicon" href="data:,">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0&display=block">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="uni-header">
+    <div class="title-block">
+      <div class="logo-text">
+        <h1>Radio Rocky Beach</h1>
+        <span class="material-symbols-rounded logo" aria-hidden="true">cell_tower</span>
+      </div>
+      <h3 class="subtitle">Listen To GTA Radio</h3>
+    </div>
+  </header>
+
+  <form class="search" id="search-form">
+    <input id="search" list="station-list" placeholder="Search a Station..." autocomplete="off" aria-label="Sender suchen">
+    <span class="material-symbols-rounded search-icon" aria-hidden="true">search</span>
+    <datalist id="station-list"></datalist>
+  </form>
+
+  <p class="status" id="status">Lädt…</p>
+
+  <section class="popular card">
+    <h2>Most Popular:</h2>
+    <div class="popular__grid" id="popular"></div>
+  </section>
+
+  <div class="show-all">
+    <span class="material-symbols-rounded" aria-hidden="true">expand_more</span>
+    <a href="stations.html">Show All Stations</a>
+  </div>
+
+  <script type="module">
+    import { getStations, getStationId, getName, getLabel, imageUrl } from './api.js'
+    import { setFavicon } from './icons.js'
+
+    setFavicon()
+
+    const status = document.getElementById('status')
+    const input = document.getElementById('search')
+    const list = document.getElementById('station-list')
+    const popular = document.getElementById('popular')
+
+    try {
+      const stations = await getStations()
+
+      if (stations.length === 0) {
+        status.textContent = 'Gerade sind keine Sender online.'
+      } else {
+        status.hidden = true
+      }
+
+      // Suche: alle Sender alphabetisch als Vorschläge
+      const sorted = [...stations].sort((a, b) => getLabel(a).localeCompare(getLabel(b)))
+      for (const s of sorted) {
+        const option = document.createElement('option')
+        option.value = getLabel(s)
+        list.append(option)
+      }
+
+      function openSelected() {
+        const found = stations.find(s => getLabel(s) === input.value)
+        if (found) {
+          location.href = `station.html?id=${encodeURIComponent(getStationId(found.listenurl))}`
+        }
+      }
+      input.addEventListener('change', openSelected)
+      document.getElementById('search-form').addEventListener('submit', event => {
+        event.preventDefault()
+        openSelected()
+      })
+
+      // Most Popular: die drei Sender mit den meisten Hörern
+      const top = [...stations].sort((a, b) => b.listeners - a.listeners).slice(0, 3)
+      for (const s of top) {
+        const id = getStationId(s.listenurl)
+        const link = document.createElement('a')
+        link.href = `station.html?id=${encodeURIComponent(id)}`
+
+        const img = document.createElement('img')
+        img.src = imageUrl(id)
+        img.alt = getName(s)
+
+        const badge = document.createElement('span')
+        badge.className = 'listeners'
+        badge.textContent = `${s.listeners} Listeners`
+
+        link.append(img, badge)
+        popular.append(link)
+      }
+    } catch (error) {
+      console.error(error)
+      status.textContent = 'Sender konnten nicht geladen werden.'
+    }
+  </script>
+</body>
+</html>

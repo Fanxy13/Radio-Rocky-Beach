@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radio Rocky Beach</title>
+  <link rel="icon" id="favicon" href="data:,">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0&display=block">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <audio id="audio" preload="none"></audio>
+
+  <div class="cover-art">
+    <img id="cover" alt="">
+  </div>
+
+  <div class="controls">
+    <h1 class="station-name" id="name"></h1>
+    <p class="song-title" id="song"></p>
+    <div class="buttons">
+      <button id="prev" aria-label="Vorheriger Sender">
+        <span class="material-symbols-rounded" aria-hidden="true">skip_previous</span>
+      </button>
+      <button id="play" aria-label="Abspielen">
+        <span class="material-symbols-rounded" id="play-icon" aria-hidden="true">play_arrow</span>
+      </button>
+      <button id="next" aria-label="Nächster Sender">
+        <span class="material-symbols-rounded" aria-hidden="true">skip_next</span>
+      </button>
+    </div>
+    <p class="status" id="status"></p>
+  </div>
+
+  <div class="volume-slider">
+    <span class="material-symbols-rounded" aria-hidden="true">volume_up</span>
+    <input id="volume" type="range" min="0" max="100" step="1" value="65" aria-label="Lautstärke">
+    <span id="volume-value">65 %</span>
+  </div>
+
+  <a class="link-allstation" href="stations.html" aria-label="Alle Sender">
+    <span class="material-symbols-rounded" aria-hidden="true">apps</span>
+  </a>
+
+  <script type="module">
+    import { getStations, getStationId, nameById, imageUrl, decode } from './api.js'
+    import { setFavicon, iconDataUrl } from './icons.js'
+
+    setFavicon()
+
+    const STREAM_FALLBACK = 'http://185.221.215.185:8000/'
+
+    const audio = document.getElementById('audio')
+    const cover = document.getElementById('cover')
+    const nameEl = document.getElementById('name')
+    const songEl = document.getElementById('song')
+    const statusEl = document.getElementById('status')
+    const playBtn = document.getElementById('play')
+    const playIcon = document.getElementById('play-icon')
+    const volume = document.getElementById('volume')
+    const volumeValue = document.getElementById('volume-value')
+
+    let stations = []
+    let currentId = idFromUrl()
+    let fallbackCover = null
+
+    function idFromUrl() {
+      return new URLSearchParams(location.search).get('id') ?? 'vc/flash'
+    }
+
+    function currentStation() {
+      return stations.find(s => getStationId(s.listenurl) === currentId)
+    }
+
+    function songTitle() {
+      const title = currentStation()?.title
+      return title ? decode(title) : '-GTA-Radio-'
+    }
+
+    function streamUrl() {
+      return currentStation()?.listenurl ?? `${STREAM_FALLBACK}${currentId}`
+    }
+
+    function render() {
+      const name = nameById(currentId)
+      nameEl.textContent = name
+      songEl.textContent = songTitle()
+      cover.alt = name
+      if (cover.dataset.id !== currentId) {
+        cover.dataset.id = currentId
+        cover.src = imageUrl(currentId)
+      }
+      document.title = `${name} · Radio Rocky Beach`
+      updateMediaSession()
+    }
+
+    function updateMediaSession() {
+      if (!('mediaSession' in navigator)) return
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: songTitle(),
+        artist: nameById(currentId),
+        album: 'Radio Rocky Beach',
+        artwork: [{ src: imageUrl(currentId), sizes: '512x512', type: 'image/png' }]
+      })
+    }
+
+    async function play() {
+      statusEl.textContent = 'Lädt…'
+      if (audio.src !== streamUrl()) audio.src = streamUrl()
+      try {
+        await audio.play()
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error(error)
+          statusEl.textContent = 'Sender gerade nicht erreichbar.'
+        }
+      }
+    }
+
+    // Bei Live-Radio wird beim Stoppen die Verbindung getrennt.
+    function stop() {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+      statusEl.textContent = ''
+    }
+
+    function switchStation(id, push, autoplay) {
+      currentId = id
+      if (push) history.pushState(null, '', `?id=${encodeURIComponent(id)}`)
+      render()
+      if (autoplay) {
+        play()
+      } else {
+        stop()
+      }
+    }
+
+    function neighbor(step) {
+      const ids = stations.map(s => getStationId(s.listenurl))
+      if (ids.length === 0) return
+      const index = ids.indexOf(currentId)
+      const nextIndex = (index + step + ids.length) % ids.length
+      switchStation(ids[nextIndex], true, true)
+    }
+
+    async function loadStations() {
+      try {
+        stations = await getStations()
+        render()
+      } catch (error) {
+        console.error(error)
+      }
+    }
+
+    // Zustand kommt direkt vom Audio-Element
+    audio.addEventListener('playing', () => {
+      playIcon.textContent = 'pause'
+      playBtn.setAttribute('aria-label', 'Pause')
+      statusEl.textContent = ''
+    })
+    audio.addEventListener('pause', () => {
+      playIcon.textContent = 'play_arrow'
+      playBtn.setAttribute('aria-label', 'Abspielen')
+    })
+    audio.addEventListener('waiting', () => {
+      statusEl.textContent = 'Lädt…'
+    })
+    audio.addEventListener('error', () => {
+      if (audio.getAttribute('src')) statusEl.textContent = 'Sender gerade nicht erreichbar.'
+    })
+
+    // Ersatzbild (Google-Antennen-Icon), falls ein Logo fehlt
+    cover.addEventListener('error', async () => {
+      try {
+        fallbackCover ??= await iconDataUrl('cell_tower', '#040D33', 512, '#9fb7f4')
+        if (cover.src !== fallbackCover) cover.src = fallbackCover
+      } catch (error) {
+        console.error(error)
+      }
+    })
+
+    // Buttons
+    playBtn.addEventListener('click', () => (audio.paused ? play() : stop()))
+    document.getElementById('prev').addEventListener('click', () => neighbor(-1))
+    document.getElementById('next').addEventListener('click', () => neighbor(1))
+
+    // Lautstärke
+    audio.volume = volume.value / 100
+    volume.addEventListener('input', () => {
+      audio.volume = volume.value / 100
+      volumeValue.textContent = `${volume.value} %`
+    })
+
+    // Medientasten und Kontrollzentrum
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('play', () => play())
+      navigator.mediaSession.setActionHandler('pause', () => stop())
+      navigator.mediaSession.setActionHandler('nexttrack', () => neighbor(1))
+      navigator.mediaSession.setActionHandler('previoustrack', () => neighbor(-1))
+    }
+
+    // Zurück-Button im Browser
+    window.addEventListener('popstate', () => {
+      switchStation(idFromUrl(), false, !audio.paused)
+    })
+
+    render()
+    loadStations()
+    setInterval(loadStations, 15000) // Songtitel aktuell halten
+  </script>
+</body>
+</html>
