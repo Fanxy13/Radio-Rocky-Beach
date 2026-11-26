@@ -4,15 +4,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Radio Rocky Beach</title>
-  <link rel="icon" id="favicon" href="data:,">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0&display=block">
   <link rel="stylesheet" href="style.css">
+  <style>
+    .material-symbols-rounded { font-size: 1.6rem; line-height: 1; vertical-align: middle; }
+    .buttons button { display: inline-flex; align-items: center; justify-content: center; }
+    .cover-fallback {
+      width: min(400px, 80vw); aspect-ratio: 1; border-radius: 1em;
+      background: #9fb7f4; color: #040D33;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .cover-fallback .material-symbols-rounded { font-size: min(200px, 40vw); }
+    [hidden] { display: none !important; }
+  </style>
 </head>
 <body>
   <audio id="audio" preload="none"></audio>
 
   <div class="cover-art">
     <img id="cover" alt="">
+    <div class="cover-fallback" id="cover-fallback" hidden>
+      <span class="material-symbols-rounded" aria-hidden="true">cell_tower</span>
+    </div>
   </div>
 
   <div class="controls">
@@ -44,14 +57,12 @@
 
   <script type="module">
     import { getStations, getStationId, nameById, imageUrl, decode } from './api.js'
-    import { setFavicon, iconDataUrl } from './icons.js'
 
-    setFavicon()
-
-    const STREAM_FALLBACK = 'http://185.221.215.185:8000/'
+    const STREAM_BASE = 'https://audio.gtaradio.net/'
 
     const audio = document.getElementById('audio')
     const cover = document.getElementById('cover')
+    const coverFallback = document.getElementById('cover-fallback')
     const nameEl = document.getElementById('name')
     const songEl = document.getElementById('song')
     const statusEl = document.getElementById('status')
@@ -62,7 +73,6 @@
 
     let stations = []
     let currentId = idFromUrl()
-    let fallbackCover = null
 
     function idFromUrl() {
       return new URLSearchParams(location.search).get('id') ?? 'vc/flash'
@@ -78,7 +88,7 @@
     }
 
     function streamUrl() {
-      return currentStation()?.listenurl ?? `${STREAM_FALLBACK}${currentId}`
+      return `${STREAM_BASE}${currentId}`
     }
 
     function render() {
@@ -86,8 +96,9 @@
       nameEl.textContent = name
       songEl.textContent = songTitle()
       cover.alt = name
-      if (cover.dataset.id !== currentId) {
-        cover.dataset.id = currentId
+      if (cover.getAttribute('src') !== imageUrl(currentId)) {
+        cover.hidden = false
+        coverFallback.hidden = true
         cover.src = imageUrl(currentId)
       }
       document.title = `${name} · Radio Rocky Beach`
@@ -170,14 +181,10 @@
       if (audio.getAttribute('src')) statusEl.textContent = 'Sender gerade nicht erreichbar.'
     })
 
-    // Ersatzbild (Google-Antennen-Icon), falls ein Logo fehlt
-    cover.addEventListener('error', async () => {
-      try {
-        fallbackCover ??= await iconDataUrl('cell_tower', '#040D33', 512, '#9fb7f4')
-        if (cover.src !== fallbackCover) cover.src = fallbackCover
-      } catch (error) {
-        console.error(error)
-      }
+    // Ersatz-Icon, falls ein Logo fehlt
+    cover.addEventListener('error', () => {
+      cover.hidden = true
+      coverFallback.hidden = false
     })
 
     // Buttons
